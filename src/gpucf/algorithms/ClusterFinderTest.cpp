@@ -24,7 +24,6 @@ void ClusterFinderTest::run(nonstd::span<const Digit> digits)
 {
     this->digits = digits;
 
-    log::Info() << "Run cpu cluster finder.";
     res = gt.run(digits);
 
     log::Debug() << "send Digits to GPU";
@@ -167,16 +166,22 @@ void ClusterFinderTest::checkCluster(
     DigitDrawer drawer(digits, peaksGT, peaks);
 
     size_t correctCluster = 0;
+    size_t printCluster = 3;
     for (const Cluster &c : cluster)
     {
         bool posOk = clpos.contains(c);
-        correctCluster += posOk;
 
-        if (!posOk)
+        if (!posOk && printCluster > 0)
         {
-            log::Debug() << "GT closest: " << clpos.findClosest(c);
-            log::Debug() << "GPU:        " << c;
+            log::Debug() 
+                << "Print around cluster:\n"
+                << drawer.drawArea(
+                    Digit{0, c.globalRow(), int(c.padMean), int(c.timeMean)},
+                    3);
+            printCluster--;
         }
+
+        correctCluster += posOk;
     }
 
     float correctFraction = float(correctCluster) / cluster.size();

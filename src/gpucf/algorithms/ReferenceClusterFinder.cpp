@@ -23,6 +23,8 @@ const std::unordered_map<Delta, std::vector<Delta>> ReferenceClusterFinder::inne
         { {1, 1},{ {2, 1}, {2, 2}, {1, 2} } },
     };
 
+
+
 ReferenceClusterFinder::ReferenceClusterFinder(ClusterFinderConfig config)
     : config(config)
 {
@@ -165,6 +167,7 @@ ReferenceClusterFinder::PeakCount ReferenceClusterFinder::countPeaks(
     }
 
     return (innerPeaks > 0) ? (PCMASK_HAS_3X3_PEAKS | innerPeaks) : outerPeaks;
+
 }
 
 

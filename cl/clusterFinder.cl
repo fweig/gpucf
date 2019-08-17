@@ -21,7 +21,7 @@
 #define GET_IS_ABOVE_THRESHOLD(val) (val >> 1)
 
 
-typedef struct PartialCluster_s
+typedef struct ClusterAccumulator_s
 {
     charge_t Q;
     charge_t padMean;
@@ -30,7 +30,7 @@ typedef struct PartialCluster_s
     charge_t timeSigma;
     uchar    splitInTime;
     uchar    splitInPad;
-} PartialCluster;
+} ClusterAccumulator;
 
 typedef short delta_t;
 typedef short2 delta2_t;
@@ -119,7 +119,7 @@ bool isAtEdge(const Digit *d)
 
 
 
-void toNative(const PartialCluster *cluster, const Digit *d, ClusterNative *cn)
+void toNative(const ClusterAccumulator *cluster, const Digit *d, ClusterNative *cn)
 {
     uchar isEdgeCluster = isAtEdge(d);
     uchar splitInTime   = cluster->splitInTime >= MIN_SPLIT_NUM;
@@ -139,7 +139,7 @@ void toNative(const PartialCluster *cluster, const Digit *d, ClusterNative *cn)
 }
 
 void collectCharge(
-        PartialCluster *cluster,
+        ClusterAccumulator *cluster,
         charge_t splitCharge,
         delta_t dp,
         delta_t dt)
@@ -153,7 +153,7 @@ void collectCharge(
 
 
 charge_t updateClusterInner(
-        PartialCluster *cluster, 
+        ClusterAccumulator *cluster, 
         charge_t charge, 
         char peakCount, 
         delta_t dp, 
@@ -170,7 +170,7 @@ charge_t updateClusterInner(
 }
 
 void updateClusterOuter(
-        PartialCluster *cluster,
+        ClusterAccumulator *cluster,
         charge_t charge,
         char peakCount,
         delta_t dp,
@@ -189,7 +189,7 @@ void updateClusterOuter(
 void addOuterCharge(
         global const charge_t       *chargeMap,
         global const char           *peakCountMap,
-                     PartialCluster *cluster, 
+                     ClusterAccumulator *cluster, 
                      global_pad_t    gpad,
                      timestamp       time,
                      delta_t         dp,
@@ -204,7 +204,7 @@ void addOuterCharge(
 charge_t addInnerCharge(
         global const charge_t       *chargeMap,
         global const char           *peakCountMap,
-                     PartialCluster *cluster,
+                     ClusterAccumulator *cluster,
                      global_pad_t    gpad,
                      timestamp       time,
                      delta_t         dp,
@@ -219,7 +219,7 @@ charge_t addInnerCharge(
 void addCorner(
         global const charge_t       *chargeMap,
         global const char           *peakCountMap,
-                     PartialCluster *myCluster,
+                     ClusterAccumulator *myCluster,
                      global_pad_t    gpad,
                      timestamp       time,
                      delta_t         dp,
@@ -238,7 +238,7 @@ void addCorner(
 void addLine(
         global const charge_t       *chargeMap,
         global const char           *peakCountMap,
-                     PartialCluster *myCluster,
+                     ClusterAccumulator *myCluster,
                      global_pad_t    gpad,
                      timestamp       time,
                      delta_t         dp,
@@ -252,7 +252,7 @@ void addLine(
     }
 }
 
-void reset(PartialCluster *clus)
+void reset(ClusterAccumulator *clus)
 {
     clus->Q           = 0.f;
     clus->padMean     = 0.f;
@@ -330,7 +330,7 @@ void updateClusterScratchpadInner(
                     ushort          N,
         local const charge_t       *buf,
         local const char           *peakCount,
-                    PartialCluster *cluster,
+                    ClusterAccumulator *cluster,
         local       uchar          *innerAboveThreshold)
 {
     uchar aboveThreshold = 0;
@@ -372,7 +372,7 @@ void updateClusterScratchpadOuter(
         local const charge_t       *buf,
         local const char           *peakCount,
         local const uchar          *innerAboveThresholdSet,
-                    PartialCluster *cluster)
+                    ClusterAccumulator *cluster)
 {
     uchar aboveThreshold = innerAboveThresholdSet[lid];
 
@@ -383,12 +383,13 @@ void updateClusterScratchpadOuter(
         charge_t q = buf[N * lid + i];
         char    pc = peakCount[N * lid + i];
 
-        ushort outerIdx = i + offset;
-
         /* q = (q < 0) ? -q : 0.f; */
-        bool contributes = innerAboveThreshold(aboveThreshold, outerIdx);
-        q = (contributes) ? q : 0.f;
+        /* bool contributes = (q > OUTER_CHARGE_THRESHOLD */ 
+        /*         && innerAboveThreshold(aboveThreshold, outerIdx)); */
 
+        /* q = (contributes) ? q : 0.f; */
+
+        ushort outerIdx = i + offset;
         delta2_t d = OUTER_NEIGHBORS[outerIdx];
         delta_t dp = d.x;
         delta_t dt = d.y;
@@ -408,7 +409,7 @@ void buildClusterScratchPad(
             local        charge_t       *buf,
             local        char           *bufPeakCount,
             local        uchar          *innerAboveThreshold,
-                         PartialCluster *myCluster)
+                         ClusterAccumulator *myCluster)
 {
     reset(myCluster);
 
@@ -503,7 +504,7 @@ void buildClusterScratchPad(
 void buildClusterNaive(
         global const charge_t       *chargeMap,
         global const char           *peakCountMap,
-                     PartialCluster *myCluster,
+                     ClusterAccumulator *myCluster,
                      global_pad_t    gpad,
                      timestamp       time)
 {
@@ -566,7 +567,6 @@ void buildClusterNaive(
     // o i I i o
     // o o O o o
     addLine(chargeMap, peakCountMap, myCluster, gpad, time,  0,  1); 
-
     // Add charges in bottom right corner:
     // o o o o o
     // o i i i o
@@ -689,7 +689,7 @@ bool isPeak(
 
 
 void finalize(
-              PartialCluster *pc,
+              ClusterAccumulator *pc,
         const Digit          *myDigit)
 {
     pc->Q += myDigit->charge;
@@ -706,12 +706,11 @@ void finalize(
     pc->timeMean += myDigit->time;
 
 #if defined(CORRECT_EDGE_CLUSTERS)
-    if (isAtEdge(myDigit) 
-            && fabs(pc->padMean - (charge_t)myDigit->pad) > 0.0f
-            && fabs(pc->timeMean - (charge_t)myDigit->time) > 0.0f)
+    if (isAtEdge(myDigit))
     {
-        pc->padMean = myDigit->pad; 
-        pc->timeMean = myDigit->time;
+        float s = (myDigit->pad < 2) ? 1.f : -1.f;
+        bool c  = s*(pc->padMean - myDigit->pad) > 0.f;
+        pc->padMean = (c) ? myDigit->pad : pc->padMean;
     }
 #endif
 }
@@ -1039,7 +1038,7 @@ void computeClusters(
 
     global_pad_t gpad = tpcGlobalPadIdx(myDigit.row, myDigit.pad);
 
-    PartialCluster pc;
+    ClusterAccumulator pc;
 #if defined(BUILD_CLUSTER_SCRATCH_PAD)
     const ushort N = 8;
     local ChargePos posBcast[SCRATCH_PAD_WORK_GROUP_SIZE];
